@@ -21,6 +21,7 @@ let isListening = false;
 let currentAbort = null;
 let questionTimer = null;
 let lastQuestion = '';
+const pastAnswers = []; // answers given in this session, so stories don't repeat
 const transcript = []; // { who: 'You' | 'Them', text, at }
 let sessionStart = new Date();
 
@@ -198,17 +199,30 @@ async function transcribe(buffer, mimeType) {
 }
 
 const BASE_PROMPT = `You are Sidekick, a real-time assistant shown in a small overlay.
-The user is in the middle of something live: a call, an interview, a meeting, a lecture, or work on their screen.
+The user is in the middle of something live: an interview, a call, a meeting, a lecture, or work on their screen.
 Your job is to hand them the actual answer, ready to use.
-Rules:
-- Never restate, summarize, or rephrase the question. Never describe what someone is asking ("They're asking about..."). Go straight to the answer.
-- When someone asked the user a question, write the exact words the user should say back, in first person, as if the user is talking. No intro like "You could say".
-- Keep it short enough to read in a few seconds: a few sentences, unless the user's instructions say otherwise.
+
+How to answer:
+- Never restate, summarize, or describe the question. Go straight to the answer.
+- When someone asked the user a question, write what the user should say back, in first person, as if they're talking.
+- Keep it short enough to glance at: usually 3 to 6 sentences. Longer only for "walk me through" questions.
 - If there's a coding or math problem on screen, give the approach and the solution with brief reasoning.
 - "You" in the transcript is the user. "Them" is everyone else.
-- For questions about the user (background, experience, projects, why this job), use only facts from their context. Never make up experience, skills, or numbers they don't have. If the context doesn't cover it, say what's missing in a few words.
-- Follow the user's own notes and instructions in their context about tone and format.
-- Write in plain, natural language that sounds like a person talking, not like an AI.`;
+
+Sound like a real person, not an AI:
+- Write the way a smart, friendly college senior actually talks in a professional interview: contractions, plain words, specific details (what the problem was, what they actually did, what tools, what happened).
+- Vary how answers start and end. Don't end with a tidy moral, a summary line, or "and that's why I...". It's fine to just stop once the point is made.
+- Avoid filler and corporate words: passionate, leverage, utilize, spearheaded, synergy, "I'm excited to", "ultimately", "at the end of the day", "in summary", "this taught me the importance of".
+- Let some personality through: a little warmth, honesty about what was hard, curiosity.
+
+Use the full range of the user's experience:
+- Their context has many experiences: jobs, projects, school, volunteering, life. Pick the one that best fits each question, not the same favorite every time.
+- Check "What I've already said" below. Don't reuse a story that's already been told unless the question is specifically about it. Reach for a different experience.
+
+Honesty:
+- You can use general knowledge to explain concepts, reason through technical questions, and frame answers naturally.
+- Never invent experiences, results, numbers, tools, or skills the user doesn't have. If their context doesn't cover something, answer honestly from what they do have, or note in a few words what's missing.
+- Follow the user's own notes and instructions in their context.`;
 
 // mode: 'heard' = someone asked the user a question out loud,
 //       'typed' = the user typed a question, 'now' = Cmd+Enter with nothing typed
@@ -219,6 +233,9 @@ function buildInput({ question, screenshot, mode }) {
   if (ctx.text) text += `=== My context (${ctx.name}) ===\n${ctx.text}\n\n`;
   const convo = recentTranscript();
   if (convo) text += `=== Recent transcript ===\n${convo}\n\n`;
+  if (pastAnswers.length) {
+    text += `=== What I've already said in this conversation (don't repeat these stories) ===\n${pastAnswers.slice(-8).map((a, i) => `${i + 1}. ${a}`).join('\n')}\n\n`;
+  }
   if (mode === 'heard') {
     text += `=== Task ===\nThey just asked me: "${question}"\nWrite exactly what I should say back, in first person. Don't repeat or describe the question.`;
   } else if (question) {
@@ -266,6 +283,7 @@ async function streamAnswer({ question = '', includeScreen = false, label = '', 
     const decoder = new TextDecoder();
     let buf = '';
     let gotText = false;
+    let fullAnswer = '';
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -279,7 +297,7 @@ async function streamAnswer({ question = '', includeScreen = false, label = '', 
         let evt;
         try { evt = JSON.parse(payload); } catch { continue; }
         if (ac.signal.aborted) return;
-        if (evt.type === 'response.output_text.delta') { gotText = true; send('answer:delta', evt.delta); }
+        if (evt.type === 'response.output_text.delta') { gotText = true; fullAnswer += evt.delta || ''; send('answer:delta', evt.delta); }
         if (evt.type === 'response.output_text.done' && !gotText && evt.text) { gotText = true; send('answer:delta', evt.text); }
         if (evt.type === 'error' || evt.type === 'response.failed') {
           logError('Answer stream', payload);
@@ -293,7 +311,10 @@ async function streamAnswer({ question = '', includeScreen = false, label = '', 
       logError('Answer', 'stream ended with no text');
       send('answer:error', 'The model sent back an empty answer. Try again, or change the answer model in Settings.');
     }
-    else send('answer:done');
+    else {
+      if (fullAnswer.trim()) pastAnswers.push(fullAnswer.trim().replace(/\s+/g, ' ').slice(0, 400));
+      send('answer:done');
+    }
   } catch (err) {
     if (err && err.name === 'AbortError') return;
     logError('Answer', errorText(err));
@@ -502,6 +523,7 @@ function registerIpc() {
 
   ipcMain.handle('clear', () => {
     transcript.length = 0;
+    pastAnswers.length = 0;
     sessionStart = new Date();
     clearTimeout(questionTimer);
     questionTimer = null;
