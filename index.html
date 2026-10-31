@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+  <title>Sidekick</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="panel">
+    <header class="drag">
+      <div class="brand">
+        <span id="dot" class="dot"></span>
+        <span>Sidekick</span>
+      </div>
+      <select id="profileSelect" class="no-drag profile-select" title="Active context"></select>
+      <div class="meters">
+        <span class="meter" title="Your mic"><i>You</i><b id="meterYou"></b></span>
+        <span class="meter" title="System audio"><i>Them</i><b id="meterThem"></b></span>
+      </div>
+      <div class="actions no-drag">
+        <button id="listenBtn" title="Start or stop listening (Cmd+Shift+L)">Listen</button>
+        <button id="autoBtn" title="Answer questions automatically (Cmd+Shift+A)">Auto</button>
+        <button id="askBtn" title="Ask using screen + conversation (Cmd+Enter)">Ask</button>
+        <button id="moreBtn" title="More">⋯</button>
+      </div>
+    </header>
+
+    <div id="menu" class="menu hidden no-drag">
+      <button data-panel="context">Edit context</button>
+      <button data-panel="settings">Settings</button>
+      <button id="summaryBtn">Summarize and save (Cmd+Shift+M)</button>
+      <button id="notesBtn">Open notes folder</button>
+      <button id="clearBtn">Clear session (Cmd+Shift+X)</button>
+      <button id="toggleTranscriptBtn">Hide transcript</button>
+      <button id="hideBtn">Hide window (Cmd+\)</button>
+      <button id="quitBtn">Quit</button>
+    </div>
+
+    <!-- main view -->
+    <div id="mainView" class="view">
+      <section id="transcriptWrap" class="transcript-wrap no-drag">
+        <div class="label">Live transcript</div>
+        <div id="transcript" class="transcript"><p class="muted">Press Listen to start, or join a call.</p></div>
+      </section>
+
+      <section class="answer-wrap no-drag">
+        <div class="label" id="answerLabel">Answer</div>
+        <div id="answer" class="answer"><p class="muted">Cmd+Enter answers using your screen, the conversation, and your context.</p></div>
+      </section>
+
+      <form id="askForm" class="ask no-drag">
+        <input id="question" placeholder="Ask anything (Cmd+Shift+K)" autocomplete="off" />
+        <label class="screen-toggle"><input type="checkbox" id="useScreen" checked /> screen</label>
+      </form>
+    </div>
+
+    <!-- context view -->
+    <div id="contextView" class="view sheet hidden no-drag">
+      <div class="sheet-head">
+        <strong>Context</strong>
+        <button class="close-panel">Done</button>
+      </div>
+      <p class="hint">Everything here gets sent with each answer. Make one per situation, like an interview, a class, or a work meeting, and switch between them from the dropdown up top.</p>
+      <div class="row">
+        <select id="ctxSelect"></select>
+        <button id="ctxNew">New</button>
+        <button id="ctxDelete">Delete</button>
+      </div>
+      <label class="field">Name
+        <input id="ctxName" />
+      </label>
+      <label class="field grow">Notes and instructions
+        <textarea id="ctxNotes" placeholder="Paste anything useful: your resume, the job description, talking points, your projects, or instructions like &quot;keep answers casual and short.&quot;"></textarea>
+      </label>
+      <div class="files">
+        <div class="files-head"><span>Files</span><button id="ctxAddFile">Add file (.pdf .txt .md)</button></div>
+        <ul id="ctxFiles"></ul>
+      </div>
+      <div id="ctxSaved" class="hint"></div>
+    </div>
+
+    <!-- settings view -->
+    <div id="settingsView" class="view sheet hidden no-drag">
+      <div class="sheet-head">
+        <strong>Settings</strong>
+        <button class="close-panel">Done</button>
+      </div>
+
+      <label class="field">OpenAI API key
+        <div class="row">
+          <input id="keyInput" type="password" placeholder="sk-..." autocomplete="off" />
+          <button id="keySave">Save</button>
+        </div>
+      </label>
+      <div id="keyStatus" class="hint"></div>
+
+      <div class="group-title">Calls</div>
+      <label class="check"><input type="checkbox" data-setting="detectCalls" /> Detect calls (Zoom, Meet, Teams, Webex, Slack huddles)</label>
+      <label class="check"><input type="checkbox" data-setting="autoListen" /> Start listening when a call starts</label>
+      <label class="check"><input type="checkbox" data-setting="summarizeOnEnd" /> Summarize and save notes when a call ends</label>
+      <label class="check"><input type="checkbox" data-setting="autoAnswer" /> Auto-answer questions (Cmd+Shift+A)</label>
+
+      <div class="group-title">App</div>
+      <label class="check"><input type="checkbox" data-setting="openAtLogin" /> Run hidden at login so call detection works (window only opens on a call)</label>
+
+      <div class="group-title">Advanced</div>
+      <label class="field">Answer model <input data-setting="chatModel" /></label>
+      <label class="field">Transcription model <input data-setting="transcribeModel" /></label>
+      <label class="field">Seconds per audio chunk <input data-setting="chunkSeconds" type="number" min="2" max="15" /></label>
+      <label class="field">Notes folder <input data-setting="notesDir" /></label>
+    </div>
+
+    <div id="status" class="status"></div>
+  </div>
+
+  <script src="node_modules/marked/lib/marked.umd.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
