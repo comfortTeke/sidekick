@@ -49,6 +49,7 @@ class AudioTrack {
     let max = 0;
     for (const s of this.samples) max = Math.max(max, Math.abs(s));
     this.peak = Math.max(this.peak, max);
+    this.maxEver = Math.max(this.maxEver || 0, max);
     this.meterEl.style.setProperty('--lvl', `${Math.min(100, max * 300)}%`);
   }
 
@@ -82,9 +83,19 @@ class AudioTrack {
   }
 }
 
+const THEM_WARNING = 'Not hearing the other person. Turn on Screen Recording for Sidekick in System Settings > Privacy & Security > Screen & System Audio Recording (remove it and add it back if it is already on), then quit and reopen Sidekick.';
+let themCheckTimer = null;
+
+function showWarning(msg) {
+  $('warn').textContent = msg || '';
+  $('warn').classList.toggle('hidden', !msg);
+}
+
 async function startListening() {
   if (listening) return;
   tracks = [];
+  let themOk = false;
+  showWarning('');
   try {
     const mic = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true },
@@ -100,12 +111,12 @@ async function startListening() {
     const audio = display.getAudioTracks();
     if (audio.length) {
       tracks.push(new AudioTrack('Them', new MediaStream(audio), $('meterThem'), display));
+      themOk = true;
     } else {
       display.getTracks().forEach((t) => t.stop());
-      setStatus('No system audio. Turn on Screen Recording for Sidekick, then reopen it.', true);
     }
   } catch (err) {
-    setStatus(`System audio off: ${err.message}. Turn on Screen Recording for Sidekick, then reopen it.`, true);
+    console.warn('system audio', err);
   }
 
   if (!tracks.length) return;
@@ -116,10 +127,26 @@ async function startListening() {
   $('listenBtn').textContent = 'Stop';
   if ($('transcript').querySelector('.muted')) $('transcript').innerHTML = '';
   setStatus('Listening');
+  if (!themOk) {
+    showWarning(THEM_WARNING);
+  } else {
+    // A blocked capture can also look like a working but totally silent stream.
+    // If I've been talking but the other side never made a sound, warn.
+    clearTimeout(themCheckTimer);
+    themCheckTimer = setTimeout(() => {
+      const them = tracks.find((t) => t.who === 'Them');
+      const you = tracks.find((t) => t.who === 'You');
+      if (listening && them && (them.maxEver || 0) < 0.001 && you && (you.maxEver || 0) > 0.05) {
+        showWarning(THEM_WARNING);
+      }
+    }, 20000);
+  }
 }
 
 function stopListening() {
   if (!listening) return;
+  clearTimeout(themCheckTimer);
+  showWarning('');
   tracks.forEach((t) => t.stop());
   tracks = [];
   listening = false;
