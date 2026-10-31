@@ -170,32 +170,41 @@ async function transcribe(buffer, mimeType) {
 }
 
 const BASE_PROMPT = `You are Sidekick, a real-time assistant shown in a small overlay.
-The user is in the middle of something live: a call, a meeting, a lecture, or work on their screen.
-Use the recent transcript, the screenshot (if any), and the user's context to give them what they need right now.
+The user is in the middle of something live: a call, an interview, a meeting, a lecture, or work on their screen.
+Your job is to hand them the actual answer, ready to use.
 Rules:
-- Lead with the answer. No intro, no filler.
-- Keep it short enough to read in a few seconds: a few sentences or tight bullets.
-- If someone just asked a question out loud, answer that question.
+- Never restate, summarize, or rephrase the question. Never describe what someone is asking ("They're asking about..."). Go straight to the answer.
+- When someone asked the user a question, write the exact words the user should say back, in first person, as if the user is talking. No intro like "You could say".
+- Keep it short enough to read in a few seconds: a few sentences, unless the user's instructions say otherwise.
 - If there's a coding or math problem on screen, give the approach and the solution with brief reasoning.
 - "You" in the transcript is the user. "Them" is everyone else.
-- When the question is about the user (their background, experience, projects), answer in first person as the user, using only facts from their context. Never make up experience, skills, or numbers they don't have. If the context doesn't cover it, say what's missing in a few words.
+- For questions about the user (background, experience, projects, why this job), use only facts from their context. Never make up experience, skills, or numbers they don't have. If the context doesn't cover it, say what's missing in a few words.
+- Follow the user's own notes and instructions in their context about tone and format.
 - Write in plain, natural language that sounds like a person talking, not like an AI.`;
 
-function buildInput({ question, screenshot }) {
+// mode: 'heard' = someone asked the user a question out loud,
+//       'typed' = the user typed a question, 'now' = Cmd+Enter with nothing typed
+function buildInput({ question, screenshot, mode }) {
   const ctx = store.contextForPrompt();
   const content = [];
   let text = '';
   if (ctx.text) text += `=== My context (${ctx.name}) ===\n${ctx.text}\n\n`;
   const convo = recentTranscript();
   if (convo) text += `=== Recent transcript ===\n${convo}\n\n`;
-  text += question ? `=== My question ===\n${question}` : '=== What do I need right now? ===';
+  if (mode === 'heard') {
+    text += `=== Task ===\nThey just asked me: "${question}"\nWrite exactly what I should say back, in first person. Don't repeat or describe the question.`;
+  } else if (question) {
+    text += `=== Task ===\n${question}\n\nIf that reads like a question someone asked me (an interview or conversation question), write exactly what I should say back, in first person. Otherwise just answer it directly. Don't repeat or describe the question.`;
+  } else {
+    text += '=== Task ===\nIf someone in the transcript just asked me a question, write exactly what I should say back, in first person. If there is a problem on my screen, solve it. Otherwise tell me the most useful thing for this moment. Don\'t repeat or describe the question.';
+  }
   content.push({ type: 'input_text', text });
   content.push(...ctx.attachments);
   if (screenshot) content.push({ type: 'input_image', image_url: `data:image/jpeg;base64,${screenshot}` });
   return [{ role: 'user', content }];
 }
 
-async function streamAnswer({ question = '', includeScreen = false, label = '' }) {
+async function streamAnswer({ question = '', includeScreen = false, label = '', mode = '' }) {
   if (currentAbort) currentAbort.abort();
   const ac = new AbortController();
   currentAbort = ac;
@@ -210,7 +219,7 @@ async function streamAnswer({ question = '', includeScreen = false, label = '' }
       body: JSON.stringify({
         model: settings().chatModel,
         instructions: BASE_PROMPT,
-        input: buildInput({ question, screenshot }),
+        input: buildInput({ question, screenshot, mode }),
         stream: true,
       }),
     });
@@ -219,6 +228,7 @@ async function streamAnswer({ question = '', includeScreen = false, label = '' }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
+    let gotText = false;
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -232,13 +242,15 @@ async function streamAnswer({ question = '', includeScreen = false, label = '' }
         let evt;
         try { evt = JSON.parse(payload); } catch { continue; }
         if (ac.signal.aborted) return;
-        if (evt.type === 'response.output_text.delta') send('answer:delta', evt.delta);
+        if (evt.type === 'response.output_text.delta') { gotText = true; send('answer:delta', evt.delta); }
+        if (evt.type === 'response.output_text.done' && !gotText && evt.text) { gotText = true; send('answer:delta', evt.text); }
         if (evt.type === 'error' || evt.type === 'response.failed') {
           throw new Error(evt.error?.message || evt.response?.error?.message || 'Stream error');
         }
       }
     }
-    send('answer:done');
+    if (!gotText) send('answer:error', 'The model sent back an empty answer. Try again, or change the answer model in Settings.');
+    else send('answer:done');
   } catch (err) {
     if (err.name !== 'AbortError') send('answer:error', err.message);
   } finally {
@@ -283,13 +295,20 @@ function looksLikeQuestion(text) {
 // Waits for the other person to finish talking before answering
 function handleAutoAnswer(line) {
   if (line.who !== 'Them' || !settings().autoAnswer) return;
-  if (looksLikeQuestion(line.text)) lastQuestion = line.text;
-  else if (!questionTimer) return;
+  if (questionTimer) {
+    // still talking: keep adding to the question
+    lastQuestion = `${lastQuestion} ${line.text}`.trim();
+  } else if (looksLikeQuestion(line.text)) {
+    lastQuestion = line.text;
+  } else {
+    return;
+  }
   clearTimeout(questionTimer);
   questionTimer = setTimeout(() => {
     questionTimer = null;
-    const label = `Heard: "${lastQuestion.length > 70 ? lastQuestion.slice(0, 70) + '...' : lastQuestion}"`;
-    streamAnswer({ includeScreen: false, label });
+    const q = lastQuestion;
+    const label = `Heard: "${q.length > 70 ? q.slice(0, 70) + '...' : q}"`;
+    streamAnswer({ question: q, includeScreen: false, label, mode: 'heard' });
   }, 1800);
 }
 
