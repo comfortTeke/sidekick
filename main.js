@@ -239,7 +239,16 @@ async function streamAnswer({ question = '', includeScreen = false, label = '', 
   try {
     const key = requireKey();
     send('answer:start', { question: label || question || (includeScreen ? 'Screen + conversation' : 'Conversation') });
-    const screenshot = includeScreen ? await captureScreen() : null;
+    let screenshot = null;
+    if (includeScreen) {
+      try {
+        screenshot = await captureScreen();
+      } catch (err) {
+        // usually Screen Recording permission was reset by a reinstall
+        logError('Screenshot', errorText(err));
+        send('status', { error: 'Could not read your screen, so I answered without it. Turn on Screen Recording for Sidekick in System Settings, then reopen it.' });
+      }
+    }
     const res = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       signal: ac.signal,
