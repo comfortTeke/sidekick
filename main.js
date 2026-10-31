@@ -294,7 +294,11 @@ function looksLikeQuestion(text) {
 
 // Waits for the other person to finish talking before answering
 function handleAutoAnswer(line) {
-  if (line.who !== 'Them' || !settings().autoAnswer) return;
+  if (line.who !== 'Them') return;
+  if (!settings().autoAnswer) {
+    if (looksLikeQuestion(line.text)) send('status', { info: 'Question heard. Turn on Auto, or press Cmd+Shift+Enter to answer.' });
+    return;
+  }
   if (questionTimer) {
     // still talking: keep adding to the question
     lastQuestion = `${lastQuestion} ${line.text}`.trim();
@@ -405,7 +409,7 @@ function registerIpc() {
 
   ipcMain.handle('settings:set', (_e, patch) => {
     const allowed = ['chatModel', 'transcribeModel', 'chunkSeconds', 'notesDir', 'detectCalls',
-      'autoListen', 'summarizeOnEnd', 'autoAnswer', 'openAtLogin', 'activeProfile'];
+      'autoListen', 'summarizeOnEnd', 'autoAnswer', 'openAtLogin', 'activeProfile', 'showTranscript'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     changeSettings(clean);
     return store.publicSettings();

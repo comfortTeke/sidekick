@@ -12,7 +12,9 @@ const DEFAULT_SETTINGS = {
   detectCalls: true,
   autoListen: true,
   summarizeOnEnd: true,
-  autoAnswer: false,
+  autoAnswer: true,
+  showTranscript: false,
+  settingsVersion: 2,
   openAtLogin: true,
   activeProfile: 'general',
   encryptedKey: '',
@@ -35,7 +37,15 @@ function writeJSON(name, data) {
 let settings = null;
 
 function getSettings() {
-  if (!settings) settings = { ...DEFAULT_SETTINGS, ...readJSON('settings.json', {}) };
+  if (!settings) {
+    const saved = readJSON('settings.json', {});
+    settings = { ...DEFAULT_SETTINGS, ...saved };
+    // v2: answers come automatically and the transcript is hidden by default
+    if ((saved.settingsVersion || 1) < 2) {
+      settings = { ...settings, autoAnswer: true, showTranscript: false, settingsVersion: 2 };
+      writeJSON('settings.json', settings);
+    }
+  }
   return settings;
 }
 

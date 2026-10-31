@@ -189,6 +189,8 @@ function applyState(next) {
   profiles.forEach((p) => sel.add(new Option(p.name, p.id, false, p.id === settings.activeProfile)));
 
   $('autoBtn').classList.toggle('on', Boolean(settings.autoAnswer));
+  $('transcriptWrap').classList.toggle('hidden', !settings.showTranscript);
+  $('toggleTranscriptBtn').textContent = settings.showTranscript ? 'Hide transcript' : 'Show transcript';
 
   if (!$('contextView').classList.contains('hidden')) renderContextEditor(editingId);
   if (!$('settingsView').classList.contains('hidden')) renderSettings(true);
@@ -276,6 +278,7 @@ $('keySave').onclick = async () => {
 api.on('state', applyState);
 
 api.on('transcript:line', ({ who, text }) => {
+  if (who === 'You') return; // my own words still help answers, but don't need to be shown
   const el = $('transcript');
   const p = document.createElement('p');
   const name = document.createElement('span');
@@ -290,7 +293,7 @@ api.on('answer:start', ({ question }) => {
   showView('main');
   answerText = '';
   $('answerLabel').textContent = question.length > 80 ? `${question.slice(0, 80)}...` : question;
-  $('answer').innerHTML = '<p class="muted">Thinking...</p>';
+  $('answer').innerHTML = '<p class="muted">Writing your answer...</p>';
 });
 
 api.on('answer:delta', (delta) => {
@@ -328,9 +331,8 @@ $('clearBtn').onclick = () => { $('menu').classList.add('hidden'); clearSession(
 $('hideBtn').onclick = () => { $('menu').classList.add('hidden'); api.hide(); };
 $('quitBtn').onclick = () => api.quit();
 $('toggleTranscriptBtn').onclick = () => {
-  const hidden = $('transcriptWrap').classList.toggle('hidden');
-  $('toggleTranscriptBtn').textContent = hidden ? 'Show transcript' : 'Hide transcript';
   $('menu').classList.add('hidden');
+  api.setSettings({ showTranscript: !state.settings.showTranscript });
 };
 document.querySelectorAll('[data-panel]').forEach((b) => { b.onclick = () => showView(b.dataset.panel); });
 document.querySelectorAll('.close-panel').forEach((b) => { b.onclick = () => showView('main'); });

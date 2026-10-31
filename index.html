@@ -32,21 +32,21 @@
       <button id="summaryBtn">Summarize and save (Cmd+Shift+M)</button>
       <button id="notesBtn">Open notes folder</button>
       <button id="clearBtn">Clear session (Cmd+Shift+X)</button>
-      <button id="toggleTranscriptBtn">Hide transcript</button>
+      <button id="toggleTranscriptBtn">Show transcript</button>
       <button id="hideBtn">Hide window (Cmd+\)</button>
       <button id="quitBtn">Quit</button>
     </div>
 
     <!-- main view -->
     <div id="mainView" class="view">
-      <section id="transcriptWrap" class="transcript-wrap no-drag">
-        <div class="label">Live transcript</div>
+      <section id="transcriptWrap" class="transcript-wrap no-drag hidden">
+        <div class="label">What they said</div>
         <div id="transcript" class="transcript"><p class="muted">Press Listen to start, or join a call.</p></div>
       </section>
 
       <section class="answer-wrap no-drag">
         <div class="label" id="answerLabel">Answer</div>
-        <div id="answer" class="answer"><p class="muted">Cmd+Enter answers using your screen, the conversation, and your context.</p></div>
+        <div id="answer" class="answer"><p class="muted">Answers show up here when someone asks you a question. Cmd+Enter answers using your screen too.</p></div>
       </section>
 
       <form id="askForm" class="ask no-drag">
