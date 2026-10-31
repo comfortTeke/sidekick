@@ -23,6 +23,9 @@ rm -rf /Applications/Sidekick.app
 cp -R "$APP" /Applications/
 xattr -cr /Applications/Sidekick.app
 
+# Remove the build copy so only the installed app shows up in Spotlight
+rm -rf dist
+
 echo ""
 echo "Installed to /Applications/Sidekick.app"
 open /Applications/Sidekick.app
