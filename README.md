@@ -35,7 +35,7 @@ That pulls the latest code from GitHub, installs packages, and reinstalls the ap
 3. Turn on **Screen Recording** for Sidekick: System Settings > Privacy & Security > Screen & System Audio Recording. Quit Sidekick from the menu bar and open it again.
 4. Click ⋯ > **Edit context** and add your first context.
 
-Every reinstall gives the app a new local signature, so macOS may ask for mic and Screen Recording permission again.
+The first install creates a personal signing certificate in your keychain (macOS asks for your Mac password once). Every update is signed with it, so macOS keeps Sidekick's mic and Screen Recording permissions. You'll need to re-grant them one last time after switching to it.
 
 ## Context
 

@@ -12,8 +12,17 @@ if [ -z "$APP" ]; then
   exit 1
 fi
 
-# Local signature so macOS will run it on this Mac
-codesign --force --deep --sign - "$APP"
+# Sign with the personal certificate so macOS keeps permissions across updates.
+# Falls back to a throwaway signature if the certificate can't be set up.
+SIGN_NAME="Sidekick Local Signing"
+bash scripts/setup-signing.sh || echo "Couldn't set up the signing certificate. Using a temporary signature."
+if security find-certificate -c "$SIGN_NAME" >/dev/null 2>&1 && \
+   codesign --force --deep --sign "$SIGN_NAME" "$APP" 2>/dev/null; then
+  echo "Signed with your personal certificate."
+else
+  codesign --force --deep --sign - "$APP"
+  echo "Signed with a temporary signature (permissions may reset after updates)."
+fi
 
 # Close the old one if it's running, then replace it
 osascript -e 'quit app "Sidekick"' 2>/dev/null || true
