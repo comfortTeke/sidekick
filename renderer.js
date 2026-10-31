@@ -297,14 +297,20 @@ api.on('answer:start', ({ question }) => {
 });
 
 api.on('answer:delta', (delta) => {
+  if (typeof delta !== 'string') return;
   answerText += delta;
   $('answer').innerHTML = renderMarkdown(answerText);
   $('answer').scrollTop = $('answer').scrollHeight;
 });
 
 api.on('answer:done', () => {});
-api.on('answer:error', (msg) => { $('answer').innerHTML = `<p class="muted">${msg}</p>`; });
-api.on('status', ({ error, info }) => setStatus(error || info, Boolean(error)));
+api.on('answer:error', (msg) => {
+  const p = document.createElement('p');
+  p.className = 'error-text';
+  p.textContent = msg || 'Something went wrong, but there were no details. Open ⋯ > Error log.';
+  $('answer').replaceChildren(p);
+});
+api.on('status', ({ error, info } = {}) => setStatus(error || info || '', Boolean(error)));
 api.on('open-panel', (name) => showView(name));
 
 // Actions main can trigger with a user gesture (needed to start audio capture)
@@ -326,6 +332,7 @@ $('autoBtn').onclick = () => api.setSettings({ autoAnswer: !state.settings.autoA
 $('moreBtn').onclick = () => $('menu').classList.toggle('hidden');
 $('profileSelect').onchange = (e) => api.setSettings({ activeProfile: e.target.value });
 $('summaryBtn').onclick = summarize;
+$('logBtn').onclick = () => { $('menu').classList.add('hidden'); api.openLog(); };
 $('notesBtn').onclick = () => { $('menu').classList.add('hidden'); api.openNotes(); };
 $('clearBtn').onclick = () => { $('menu').classList.add('hidden'); clearSession(); };
 $('hideBtn').onclick = () => { $('menu').classList.add('hidden'); api.hide(); };

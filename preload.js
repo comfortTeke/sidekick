@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('sidekick', {
   clear: () => ipcRenderer.invoke('clear'),
   setListening: (on) => ipcRenderer.send('listening', on),
   openNotes: () => ipcRenderer.invoke('open-notes'),
+  openLog: () => ipcRenderer.invoke('open-log'),
   hide: () => ipcRenderer.send('hide'),
   focus: () => ipcRenderer.send('focus'),
   quit: () => ipcRenderer.send('quit'),

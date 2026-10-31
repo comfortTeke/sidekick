@@ -144,6 +144,34 @@ function recentTranscript(seconds = 180) {
   return transcript.filter((t) => t.at >= cutoff).map((t) => `${t.who}: ${t.text}`).join('\n');
 }
 
+
+// ---------- errors ----------
+
+const LOG_FILE = () => path.join(app.getPath('userData'), 'sidekick.log');
+
+function logError(where, detail) {
+  try {
+    fs.appendFileSync(LOG_FILE(), `[${new Date().toISOString()}] ${where}: ${detail}\n`);
+  } catch {}
+}
+
+// Turns an OpenAI error response into something readable
+function friendlyApiError(what, status, body) {
+  let msg = '';
+  try { msg = JSON.parse(body).error?.message || ''; } catch { msg = String(body || '').slice(0, 200); }
+  logError(what, `${status} ${body}`);
+  if (status === 401) return `${what} failed: your OpenAI key was rejected. Paste it again in Settings.`;
+  if (status === 429) return `${what} failed: out of OpenAI credits or rate limited. Check your balance at platform.openai.com. (${msg})`;
+  if (status === 404) return `${what} failed: the model name isn't available on your account. Change it in Settings > Advanced. (${msg})`;
+  return `${what} failed (${status}): ${msg || 'no details from OpenAI'}`;
+}
+
+function errorText(err) {
+  if (!err) return 'Unknown error';
+  if (typeof err === 'string') return err;
+  return err.message || err.toString() || 'Unknown error';
+}
+
 // ---------- OpenAI ----------
 
 function requireKey() {
@@ -164,7 +192,7 @@ async function transcribe(buffer, mimeType) {
     headers: { Authorization: `Bearer ${key}` },
     body: form,
   });
-  if (!res.ok) throw new Error(`Transcription failed (${res.status}): ${await res.text()}`);
+  if (!res.ok) throw new Error(friendlyApiError('Transcription', res.status, await res.text()));
   const data = await res.json();
   return (data.text || '').trim();
 }
@@ -223,7 +251,7 @@ async function streamAnswer({ question = '', includeScreen = false, label = '', 
         stream: true,
       }),
     });
-    if (!res.ok) throw new Error(`Answer failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw new Error(friendlyApiError('Answer', res.status, await res.text()));
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -245,14 +273,22 @@ async function streamAnswer({ question = '', includeScreen = false, label = '', 
         if (evt.type === 'response.output_text.delta') { gotText = true; send('answer:delta', evt.delta); }
         if (evt.type === 'response.output_text.done' && !gotText && evt.text) { gotText = true; send('answer:delta', evt.text); }
         if (evt.type === 'error' || evt.type === 'response.failed') {
-          throw new Error(evt.error?.message || evt.response?.error?.message || 'Stream error');
+          logError('Answer stream', payload);
+          throw new Error(`Answer failed: ${evt.message || evt.error?.message || evt.response?.error?.message || 'OpenAI returned an error with no details'}`);
         }
+        if (evt.type === 'response.refusal.delta' && evt.delta) { gotText = true; send('answer:delta', evt.delta); }
+        if (evt.type === 'response.incomplete') logError('Answer stream', `incomplete: ${payload}`);
       }
     }
-    if (!gotText) send('answer:error', 'The model sent back an empty answer. Try again, or change the answer model in Settings.');
+    if (!gotText) {
+      logError('Answer', 'stream ended with no text');
+      send('answer:error', 'The model sent back an empty answer. Try again, or change the answer model in Settings.');
+    }
     else send('answer:done');
   } catch (err) {
-    if (err.name !== 'AbortError') send('answer:error', err.message);
+    if (err && err.name === 'AbortError') return;
+    logError('Answer', errorText(err));
+    send('answer:error', errorText(err));
   } finally {
     if (currentAbort === ac) currentAbort = null;
   }
@@ -271,7 +307,7 @@ async function summarize() {
       input: full,
     }),
   });
-  if (!res.ok) throw new Error(`Summary failed (${res.status}): ${await res.text()}`);
+  if (!res.ok) throw new Error(friendlyApiError('Summary', res.status, await res.text()));
   const data = await res.json();
   const summary = data.output_text
     || (data.output || []).flatMap((o) => o.content || []).map((c) => c.text || '').join('');
@@ -443,7 +479,8 @@ function registerIpc() {
       handleAutoAnswer(line);
       return line;
     } catch (err) {
-      send('status', { error: err.message });
+      logError('Transcription', errorText(err));
+      send('status', { error: errorText(err) });
       return null;
     }
   });
@@ -451,7 +488,7 @@ function registerIpc() {
   ipcMain.handle('ask', (_e, opts) => streamAnswer(opts));
 
   ipcMain.handle('summarize', async () => {
-    try { return await summarize(); } catch (err) { return { error: err.message }; }
+    try { return await summarize(); } catch (err) { logError('Summary', errorText(err)); return { error: errorText(err) }; }
   });
 
   ipcMain.handle('clear', () => {
@@ -463,6 +500,10 @@ function registerIpc() {
 
   ipcMain.on('listening', (_e, on) => { isListening = on; updateTray(); });
   ipcMain.handle('open-notes', openNotes);
+  ipcMain.handle('open-log', () => {
+    if (!fs.existsSync(LOG_FILE())) fs.writeFileSync(LOG_FILE(), 'No errors logged yet.\n');
+    shell.openPath(LOG_FILE());
+  });
   ipcMain.on('hide', () => { win.hide(); updateTray(); });
   ipcMain.on('focus', () => { win.show(); win.focus(); });
   ipcMain.on('quit', () => app.quit());
